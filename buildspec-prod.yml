@@ -1,0 +1,27 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Pre Build Phase...
+      # Ensure CODEBUILD_WEBHOOK_TRIGGER is set and extract the version number from the tag
+      - |
+        if [ -z "$CODEBUILD_WEBHOOK_TRIGGER" ]; then
+          echo "CODEBUILD_WEBHOOK_TRIGGER is not set!"
+          exit 1
+        fi
+        export TAG_VERSION_NUMBER=$(echo $CODEBUILD_WEBHOOK_TRIGGER | sed 's/.*\///')  # Extract the version number from the tag
+        echo "Tag version: $TAG_VERSION_NUMBER"
+        
+      # Login to ECR to push Docker images
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+
+  build:
+    commands:
+      - docker build -t $IMAGE_REPO_NAME:latest -f Dockerfile-prod .
+      - docker tag $IMAGE_REPO_NAME:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$TAG_VERSION_NUMBER
+
+  post_build:
+    commands:
+      # Push both the versioned and latest images to ECR
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$TAG_VERSION_NUMBER
